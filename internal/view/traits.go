@@ -222,6 +222,7 @@ func (t *traitSearch) evalAll(list [][6]int) [][6]int {
 	for range max(1, runtime.NumCPU()-1) {
 		wg.Go(func() {
 			for tr := range ch {
+				yield()
 				t.eval(tr)
 			}
 		})

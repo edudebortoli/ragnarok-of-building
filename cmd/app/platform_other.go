@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"ragnarok-of-building/internal/ui"
 	"runtime"
 	"strings"
 )
@@ -79,12 +80,12 @@ var pickFolder = func() (string, error) {
 var errNoPicker = errors.New("instale o zenity ou o kdialog para escolher arquivos")
 
 // runPicker runs a dialog program and returns the path it printed; a
-// cancelled dialog exits non-zero.
+// cancelled dialog exits non-zero (taken as no file chosen).
 func runPicker(name string, args ...string) (string, error) {
 	out, err := exec.Command(name, args...).Output()
 	path := strings.TrimRight(string(out), "\r\n")
 	if err != nil || path == "" {
-		return "", errors.New("nada escolhido")
+		return "", ui.ErrNoFile // cancelled
 	}
 	return path, nil
 }

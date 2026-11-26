@@ -2,9 +2,9 @@ package ui
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -14,6 +14,7 @@ import (
 	"gioui.org/op"
 
 	"ragnarok-of-building/internal/calc"
+	"ragnarok-of-building/internal/store"
 	"ragnarok-of-building/internal/view"
 )
 
@@ -30,12 +31,21 @@ type App struct {
 	OnTheme func(dark bool)
 	// Invalidate asks the window for a new frame (set by the host).
 	Invalidate func()
-	// Saved is the saved-builds file (builds.json next to the program).
-	SavedFile string
-	// StateFile keeps the window layout, language and last build.
-	StateFile string
-	// OpenFile asks the system for a file to open (replay import).
-	OpenFile func(title, filter string) (string, error)
+	// Store keeps the window layout, language and last build (StateKey)
+	// and the saved builds (view.SavedKey); nil keeps nothing.
+	Store store.Store
+	// OpenFile asks the player for a file to open (replay import, builds
+	// backup) and returns its name and contents.
+	OpenFile func(title, filter string) (name string, data []byte, err error)
+	// SaveFile hands the player a file (builds backup) and says where it
+	// went.
+	SaveFile func(name string, data []byte) (where string, err error)
+	// ShareURL makes a link that opens a build code in this program (the
+	// web page); nil where there is none.
+	ShareURL func(code string) string
+	// NoPaste: the paste service cannot be reached from here (in the
+	// browser paste.rs refuses pages: it sends no CORS headers).
+	NoPaste bool
 
 	mu         sync.Mutex
 	jobs       []func()       // run by the next frame (see later)
@@ -104,8 +114,8 @@ type windowState struct {
 
 // NewApp builds the app over the views; it opens the last build (or the
 // default one).
-func NewApp(v *view.Views, th *Theme, stateFile string) *App {
-	a := &App{Th: th, Desk: NewDesk(), V: v, Lang: "pt", StateFile: stateFile}
+func NewApp(v *view.Views, th *Theme, st store.Store) *App {
+	a := &App{Th: th, Desk: NewDesk(), V: v, Lang: "pt", Store: st}
 	a.makeWindows()
 	b := v.DefaultBuild()
 	if st, ok := a.loadState(); ok {
@@ -253,20 +263,29 @@ func (a *App) later(f func()) {
 	}
 }
 
-// openFile shows the file dialog and then calls then with the chosen path,
+// ErrNoFile is what OpenFile returns when the player closes the picker
+// without choosing a file.
+var ErrNoFile = errors.New("nenhum arquivo escolhido")
+
+// openFile shows the file dialog and then calls then with the chosen file,
 // on the window's goroutine. The dialog must not be waited for inside a
 // frame: it is modal to the window and talks to it while open, so a frame
 // holding the window hangs the program (Windows ends it as not
 // responding).
-func (a *App) openFile(title, filter string, then func(path string)) {
+//
+// A failed read is told in the chat; a cancelled picker (ErrNoFile) is not.
+func (a *App) openFile(title, filter string, then func(data []byte)) {
 	if a.OpenFile == nil || !a.dialogOpen.CompareAndSwap(false, true) {
 		return
 	}
 	go func() {
 		defer a.dialogOpen.Store(false)
-		path, err := a.OpenFile(title, filter)
-		if err == nil && path != "" {
-			a.later(func() { then(path) })
+		_, data, err := a.OpenFile(title, filter)
+		switch {
+		case err == nil:
+			a.later(func() { then(data) })
+		case !errors.Is(err, ErrNoFile):
+			a.later(func() { a.Say(err.Error(), true) })
 		}
 	}()
 }
@@ -420,8 +439,18 @@ func (a *App) View() view.BuildView {
 }
 
 func (a *App) loadState() (uiState, bool) {
+	return readState(a.Store)
+}
+
+// StateKey is the interface state's key in the store.
+const StateKey = "data/ui.json"
+
+func readState(s store.Store) (uiState, bool) {
 	var st uiState
-	b, err := os.ReadFile(a.StateFile)
+	if s == nil {
+		return st, false
+	}
+	b, err := s.Read(StateKey)
 	if err != nil || json.Unmarshal(b, &st) != nil {
 		return st, false
 	}
@@ -452,14 +481,11 @@ func (a *App) SaveNow() {
 }
 
 func (a *App) writeState(st uiState) {
-	if a.StateFile == "" {
+	if a.Store == nil {
 		return
 	}
 	b, _ := json.MarshalIndent(st, "", " ")
 	saveMu.Lock()
 	defer saveMu.Unlock()
-	tmp := a.StateFile + ".tmp"
-	if os.WriteFile(tmp, b, 0o644) == nil {
-		os.Rename(tmp, a.StateFile)
-	}
+	a.Store.Write(StateKey, b)
 }

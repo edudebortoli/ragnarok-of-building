@@ -76,6 +76,7 @@ func runPar(ctx context.Context, n int, fn func(i int)) bool {
 	for range max(1, runtime.NumCPU()-1) {
 		wg.Go(func() {
 			for i := range ch {
+				yield()
 				fn(i)
 			}
 		})

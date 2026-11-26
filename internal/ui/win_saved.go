@@ -7,8 +7,6 @@ import (
 	"image"
 	"image/color"
 	"io"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -142,7 +140,7 @@ func (a *App) layoutModal(gtx C) {
 
 // ---- Saving, new build, clipboard ----
 
-func (a *App) loadSaved() []view.SavedBuild { return view.LoadSaved(a.SavedFile) }
+func (a *App) loadSaved() []view.SavedBuild { return view.LoadSaved(a.Store) }
 
 func (a *App) currentSaved() *view.SavedBuild {
 	for _, e := range a.loadSaved() {
@@ -184,8 +182,8 @@ func (a *App) saveBuild(ask bool) {
 		if !found {
 			list = append(list, e)
 		}
-		if err := view.WriteSaved(a.SavedFile, list); err != nil {
-			a.Say(a.T("Não consegui gravar os builds no arquivo builds.json.")+" "+err.Error(), true)
+		if err := view.WriteSaved(a.Store, list); err != nil {
+			a.Say(a.T("Não consegui gravar os builds.")+" "+err.Error(), true)
 			return
 		}
 		a.savedID = e.ID
@@ -235,7 +233,19 @@ func (a *App) openCode(code string, keep bool) bool {
 	return true
 }
 
-var codeInLink = regexp.MustCompile(`[?&]b=([A-Za-z0-9_-]+)`)
+// codeInLink finds the code in a share link: ?b= (older links) or #b= (the
+// web page's).
+var codeInLink = regexp.MustCompile(`[?&#]b=([A-Za-z0-9_-]+)`)
+
+// OpenShared opens a build code that came with the page's link, on the
+// window's goroutine (safe to call from anywhere).
+func (a *App) OpenShared(code string) {
+	a.later(func() {
+		if !a.openCode(code, false) {
+			a.Say(a.T("Não consegui abrir o build do link."), true)
+		}
+	})
+}
 
 // ---- Builds salvos (win-saved) ----
 
@@ -266,7 +276,7 @@ func (a *App) savedBody(gtx C) D {
 						keep = append(keep, x)
 					}
 				}
-				view.WriteSaved(a.SavedFile, keep)
+				view.WriteSaved(a.Store, keep)
 				if a.savedID == e.ID {
 					a.savedID = ""
 				}
@@ -360,17 +370,21 @@ func sortSaved(list []view.SavedBuild) {
 	}
 }
 
-// exportSaved writes every saved build to a backup file next to the program.
+// exportSaved hands the player a backup file with every saved build (next
+// to the program on the desktop).
 func (a *App) exportSaved() {
+	if a.SaveFile == nil {
+		return
+	}
 	list := a.loadSaved()
 	b, _ := json.MarshalIndent(map[string]any{"app": "ragnarok-of-building", "version": 1, "builds": list}, "", " ")
 	name := "builds-ragnarok-of-building-" + time.Now().Format("2006-01-02") + ".json"
-	if err := os.WriteFile(name, b, 0o644); err != nil {
+	where, err := a.SaveFile(name, b)
+	if err != nil {
 		a.Say(err.Error(), true)
 		return
 	}
-	abs, _ := filepath.Abs(name)
-	a.Say(fmt.Sprintf(a.T("%d build(s) exportado(s) para %s"), len(list), abs), false)
+	a.Say(fmt.Sprintf(a.T("%d build(s) exportado(s) para %s"), len(list), where), false)
 }
 
 // importSaved merges a backup file (the export, or a plain list): a build
@@ -379,11 +393,10 @@ func (a *App) importSaved() {
 	a.openFile(a.T("Importar builds"), "JSON (*.json)|*.json", a.importSavedFile)
 }
 
-// importSavedFile merges the backup at path.
-func (a *App) importSavedFile(path string) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		a.Say(err.Error(), true)
+// importSavedFile merges a backup's contents.
+func (a *App) importSavedFile(raw []byte) {
+	if len(raw) > maxReplay { // the hosts read at most one byte more
+		a.Say(a.T("Arquivo grande demais (máx. 16 MB)."), true)
 		return
 	}
 	var wrapped struct {
@@ -417,7 +430,7 @@ func (a *App) importSavedFile(path string) {
 			n++
 		}
 	}
-	if err := view.WriteSaved(a.SavedFile, list); err != nil {
+	if err := view.WriteSaved(a.Store, list); err != nil {
 		a.Say(err.Error(), true)
 		return
 	}
@@ -434,6 +447,10 @@ func (a *App) importText(v string, keep bool) {
 	if m := codeInLink.FindStringSubmatch(v); m != nil {
 		v = m[1]
 	} else if strings.HasPrefix(strings.ToLower(v), "http") || strings.HasPrefix(strings.ToLower(v), "paste.rs/") {
+		if a.NoPaste {
+			a.Say(a.T("Links do paste.rs não abrem no navegador: peça o link ou o código do build."), true)
+			return
+		}
 		a.Say(a.T("Lendo o paste…"), false)
 		go func() {
 			code, err := a.V.ReadPaste(context.Background(), v)
@@ -503,6 +520,9 @@ func (a *App) shareBody(gtx C) D {
 	v := a.View()
 	if s.asVal == "" {
 		s.asVal, s.toVal = "paste", "new"
+		if a.ShareURL != nil {
+			s.asVal = "link"
+		}
 	}
 	shown := v.Code
 	if s.pastedFor == v.Code && s.pasted != "" {
@@ -539,6 +559,10 @@ func (a *App) shareBody(gtx C) D {
 					a.Invalidate()
 				}
 			}()
+		case "link":
+			if a.ShareURL != nil {
+				a.copyText(gtx, a.ShareURL(v.Code), a.T("Link copiado!"))
+			}
 		case "text":
 			a.copyText(gtx, a.shareText(), a.T("Texto do build copiado! Cole no Discord ou no fórum."))
 		default:
@@ -556,7 +580,18 @@ func (a *App) shareBody(gtx C) D {
 		a.importText(s.importBox.Text(), s.toVal == "this")
 		s.importBox.Ed.SetText("")
 	}
-	asOpts := []Option{{"paste", a.T("Paste (paste.rs)")}, {"code", a.T("Só o código")}, {"text", a.T("Texto (Discord / fórum)")}}
+	var asOpts []Option
+	if a.ShareURL != nil {
+		asOpts = append(asOpts, Option{"link", a.T("Link (abre no navegador)")})
+	}
+	if !a.NoPaste {
+		asOpts = append(asOpts, Option{"paste", a.T("Paste (paste.rs)")})
+	}
+	asOpts = append(asOpts, Option{"code", a.T("Só o código")}, Option{"text", a.T("Texto (Discord / fórum)")})
+	shareNote := a.T("Paste cria um link curto no paste.rs com o resumo e o código do build (público para quem tiver o link).")
+	if a.NoPaste {
+		shareNote = a.T("O link abre este build no navegador de quem receber.")
+	}
 	toOpts := []Option{{"this", a.T("Importar para este build")}, {"new", a.T("Importar como build novo")}}
 	section := func(title string, w layout.Widget) layout.Widget {
 		return func(gtx C) D {
@@ -593,7 +628,7 @@ func (a *App) shareBody(gtx C) D {
 				)
 			},
 			T(th, a.T("O código guarda o build inteiro (classe, atributos, equipamento, habilidades e buffs). Quem abrir o link ou colar o código vê o mesmo build.")+" "+
-				a.T("Paste cria um link curto no paste.rs com o resumo e o código do build (público para quem tiver o link).")).Sz(SmallText).C(ColMuted).Wrapping().W(),
+				shareNote).Sz(SmallText).C(ColMuted).Wrapping().W(),
 		)),
 		section("Importar", Col(4,
 			T(th, a.T("Para importar um build, cole o link, o link do paste ou o código aqui:")).Wrapping().W(),

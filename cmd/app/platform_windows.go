@@ -4,6 +4,7 @@ package main
 
 import (
 	"errors"
+	"ragnarok-of-building/internal/ui"
 	"runtime"
 	"strings"
 	"syscall"
@@ -119,7 +120,7 @@ func openFileDialog(title, filter string) (string, error) {
 	}()
 	<-done
 	if ok == 0 {
-		return "", errors.New("nenhum arquivo escolhido")
+		return "", ui.ErrNoFile
 	}
 	return syscall.UTF16ToString(buf), nil
 }

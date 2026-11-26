@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ragnarok of Building</title>
+<meta name="description" content="Monte sua build de Ragnarok Online LATAM, veja o dano e descubra o que melhorar.">
+<link rel="icon" type="image/png" href="icon.png">
+<style>
+  :root { --bg: #1d2026; --fg: #d8dce4; --muted: #8a93a3; --bar: #3f6fb5; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #e9ecf1; --fg: #1d2026; --muted: #5b6472; }
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
+    font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  #loading { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 12px; padding: 0 16px; text-align: center; }
+  #loading img { width: 64px; height: 64px; image-rendering: pixelated; }
+  #loading .track { width: min(320px, 80vw); height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--fg) 15%, transparent); overflow: hidden; }
+  #loading .fill { height: 100%; width: 0; background: var(--bar); transition: width .2s; }
+  #loading .note { color: var(--muted); font-size: 13px; }
+  #loading.error .fill { background: #c0392b; }
+</style>
+</head>
+<body>
+<div id="loading">
+  <img src="icon.png" alt="">
+  <div><strong>Ragnarok of Building</strong></div>
+  <div class="track"><div class="fill" id="fill"></div></div>
+  <div class="note" id="note">Baixando o programa…</div>
+</div>
+<div id="giowindow"></div>
+<noscript>O Ragnarok of Building precisa de JavaScript ligado.</noscript>
+<script src="wasm_exec.js"></script>
+<script>
+  // The window uses Alt+letter shortcuts (Alt+D, Alt+E...); keep the browser
+  // from taking them (address bar, menus). The program still gets the key.
+  window.addEventListener("keydown", (e) => {
+    if (e.altKey && !e.ctrlKey && !e.metaKey && /^Key[A-Z]$/.test(e.code)) e.preventDefault();
+  }, true);
+
+  (async () => {
+    const note = document.getElementById("note");
+    const fill = document.getElementById("fill");
+    try {
+      if (!("WebAssembly" in window)) throw new Error("Este navegador não roda WebAssembly.");
+      const res = await fetch("app.wasm");
+      if (!res.ok) throw new Error("app.wasm: " + res.status);
+      // Content-Length may be the compressed size; the bar is a hint only.
+      const total = +res.headers.get("Content-Length") || 0;
+      const reader = res.body.getReader();
+      const parts = [];
+      let got = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        parts.push(value);
+        got += value.length;
+        note.textContent = "Baixando o programa… " + (got / 1048576).toFixed(1) + " MB";
+        if (total) fill.style.width = Math.min(100, (got / total) * 100) + "%";
+      }
+      fill.style.width = "100%";
+      note.textContent = "Abrindo…";
+      const bytes = new Uint8Array(got);
+      let at = 0;
+      for (const p of parts) { bytes.set(p, at); at += p.length; }
+      const go = new Go();
+      const { instance } = await WebAssembly.instantiate(bytes, go.importObject);
+      go.run(instance); // the program removes #loading when its window draws
+    } catch (err) {
+      document.getElementById("loading").classList.add("error");
+      note.textContent = "Não deu para abrir: " + err.message;
+      console.error(err);
+    }
+  })();
+</script>
+</body>
+</html>

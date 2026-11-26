@@ -10,6 +10,7 @@ import (
 	"gioui.org/op"
 	"gioui.org/unit"
 
+	"ragnarok-of-building/internal/store"
 	"ragnarok-of-building/internal/ui"
 	"ragnarok-of-building/internal/view"
 )
@@ -21,8 +22,8 @@ func init() { runNative = nativeMain }
 
 // nativeMain never returns: Gio's app.Main keeps the main thread.
 func nativeMain(st *startup, o options, log *slog.Logger) {
-	stateFile := filepath.Join("data", "ui.json")
-	ui.UseSavedTheme(stateFile) // before the startup screen
+	files := store.Dir(".") // data/ui.json and builds.json, next to the program
+	ui.UseSavedTheme(files) // before the startup screen
 	th := ui.NewTheme()
 	w := new(app.Window)
 	w.Option(app.Title(appTitle), app.Size(unit.Dp(1440), unit.Dp(900)), app.MinSize(unit.Dp(640), unit.Dp(480)))
@@ -41,11 +42,11 @@ func nativeMain(st *startup, o options, log *slog.Logger) {
 			st.fail(err)
 			return
 		}
-		a := ui.NewApp(v, th, stateFile)
+		a := ui.NewApp(v, th, files)
 		a.Icons = ui.NewIcons(view.NewIconCache(filepath.Join("data", "cache", "img")).Get, w.Invalidate)
 		a.Invalidate = w.Invalidate
-		a.SavedFile = "builds.json"
-		a.OpenFile = openFileDialog
+		a.OpenFile = openFile
+		a.SaveFile = saveFile
 		a.OnTheme = func(on bool) { go darkTitleBar(on) }
 		simulator.Store(a)
 		w.Invalidate()

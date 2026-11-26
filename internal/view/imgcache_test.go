@@ -32,11 +32,7 @@ func TestIconCache(t *testing.T) {
 	ic.c.origin = dp.URL
 	ctx := context.Background()
 	read := func(rel string) (string, error) {
-		f, err := ic.Get(ctx, rel)
-		if err != nil {
-			return "", err
-		}
-		b, err := os.ReadFile(f)
+		b, err := ic.Get(ctx, rel)
 		return string(b), err
 	}
 	if b, err := read(ItemIcon(501)); err != nil || b != "\x89PNGfake" {

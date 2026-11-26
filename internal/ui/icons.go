@@ -1,10 +1,10 @@
 package ui
 
 import (
+	"bytes"
 	"context"
 	"image"
 	"image/png"
-	"os"
 	"sync"
 
 	"gioui.org/layout"
@@ -19,7 +19,7 @@ import (
 // Icons loads item/skill/monster/class icons in the background (from the
 // icon cache, which downloads each one once) and keeps them in memory.
 type Icons struct {
-	Get        func(ctx context.Context, rel string) (string, error) // the cache (view.IconCache.Get)
+	Get        func(ctx context.Context, rel string) ([]byte, error) // a PNG (view.IconCache.Get)
 	Invalidate func()                                                // redraw when one arrives
 
 	mu      sync.Mutex
@@ -31,7 +31,7 @@ type Icons struct {
 }
 
 // NewIcons uses get to fetch and invalidate to ask for a redraw.
-func NewIcons(get func(ctx context.Context, rel string) (string, error), invalidate func()) *Icons {
+func NewIcons(get func(ctx context.Context, rel string) ([]byte, error), invalidate func()) *Icons {
 	return &Icons{Get: get, Invalidate: invalidate, imgs: map[string]paint.ImageOp{}, arts: map[string]*image.NRGBA{}, fitted: map[fitKey]paint.ImageOp{}, pending: map[string]bool{}, sem: make(chan struct{}, 6)}
 }
 
@@ -63,13 +63,10 @@ func (ic *Icons) load(rel string) {
 	ic.sem <- struct{}{}
 	defer func() { <-ic.sem }()
 	var op paint.ImageOp
-	if file, err := ic.Get(context.Background(), rel); err == nil {
-		if f, err := os.Open(file); err == nil {
-			if img, err := png.Decode(f); err == nil {
-				op = paint.NewImageOp(img)
-				op.Filter = paint.FilterNearest // pixel art
-			}
-			f.Close()
+	if b, err := ic.Get(context.Background(), rel); err == nil {
+		if img, err := png.Decode(bytes.NewReader(b)); err == nil {
+			op = paint.NewImageOp(img)
+			op.Filter = paint.FilterNearest // pixel art
 		}
 	}
 	ic.mu.Lock()
@@ -127,15 +124,12 @@ func (ic *Icons) loadArt(rel string) {
 	ic.sem <- struct{}{}
 	defer func() { <-ic.sem }()
 	var art *image.NRGBA
-	if file, err := ic.Get(context.Background(), rel); err == nil {
-		if f, err := os.Open(file); err == nil {
-			if img, err := png.Decode(f); err == nil {
-				art = cutArt(img)
-				if s := art.Bounds().Size(); s.X < 8 || s.Y < 8 {
-					art = nil // nothing left: the icon is better
-				}
+	if b, err := ic.Get(context.Background(), rel); err == nil {
+		if img, err := png.Decode(bytes.NewReader(b)); err == nil {
+			art = cutArt(img)
+			if s := art.Bounds().Size(); s.X < 8 || s.Y < 8 {
+				art = nil // nothing left: the icon is better
 			}
-			f.Close()
 		}
 	}
 	ic.mu.Lock()

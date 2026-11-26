@@ -101,17 +101,22 @@ type IconCache struct{ c *imgCache }
 // NewIconCache keeps icons in dir.
 func NewIconCache(dir string) *IconCache { return &IconCache{newImgCache(dir)} }
 
-// Get returns the PNG file of an icon path (ItemIcon, SkillIcon...),
+// Get returns the PNG of an icon path (ItemIcon, SkillIcon...),
 // downloading it once when missing.
-func (ic *IconCache) Get(ctx context.Context, rel string) (string, error) {
+func (ic *IconCache) Get(ctx context.Context, rel string) ([]byte, error) {
 	if !dpImgPath.MatchString(rel) {
-		return "", os.ErrNotExist
+		return nil, os.ErrNotExist
 	}
-	return ic.c.get(ctx, rel)
+	file, err := ic.c.get(ctx, rel)
+	if err != nil {
+		return nil, err
+	}
+	return os.ReadFile(file)
 }
 
 // Icon paths, as Divine Pride's static site has them.
-func ItemIcon(id int) string    { return fmt.Sprintf("images/items/item/%d.png", id) }
+func ItemIcon(id int) string { return fmt.Sprintf("images/items/item/%d.png", id) }
+
 // ItemArt is the item window's picture (75x100, on white).
 func ItemArt(id int) string { return fmt.Sprintf("images/items/collection/%d.png", id) }
 

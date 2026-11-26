@@ -13,6 +13,7 @@ import (
 	"gioui.org/gpu/headless"
 
 	"ragnarok-of-building/internal/calc"
+	"ragnarok-of-building/internal/store"
 )
 
 // shot draws the current frame into a PNG (Direct3D, no window).
@@ -111,8 +112,12 @@ func TestShotsReplay(t *testing.T) {
 	}
 	h := newHarness(t)
 	a := h.a
-	a.SavedFile = filepath.Join(t.TempDir(), "builds.json")
-	a.importReplayFile(rrf)
+	a.Store = store.Dir(t.TempDir())
+	buf, err := os.ReadFile(rrf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.importReplayFile(buf)
 	deadline := time.Now().Add(20 * time.Second)
 	for a.replayDamage() == nil && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)

@@ -318,6 +318,7 @@ func (s *Server) optimizeWith(ctx context.Context, b calc.Build, o OptOptions, l
 		go func() {
 			defer wg.Done()
 			for j := range ch {
+				yield()
 				p := pos[j.p]
 				if p.item {
 					if p.pool[j.k].ID == p.current {

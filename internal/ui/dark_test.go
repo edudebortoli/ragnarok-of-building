@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"os"
 	"path/filepath"
+	"ragnarok-of-building/internal/store"
 	"regexp"
 	"strconv"
 	"testing"
@@ -68,8 +69,8 @@ func TestBarContrast(t *testing.T) {
 func TestDarkSaved(t *testing.T) {
 	h := newHarness(t)
 	defer SetDark(false)
-	f := filepath.Join(t.TempDir(), "ui.json")
-	h.a.StateFile = f
+	f := store.Dir(t.TempDir())
+	h.a.Store = f
 	h.a.SetTheme(true)
 	h.frame()
 	if !dark {
@@ -84,13 +85,13 @@ func TestDarkSaved(t *testing.T) {
 	h.a.SetTheme(false)
 	h.frame()
 	h.a.writeState(h.a.snapshot())
-	h.a.StateFile = ""
+	h.a.Store = nil
 	SetDark(true)
 	UseSavedTheme(f)
 	if dark {
 		t.Error("the saved light theme was not used")
 	}
-	UseSavedTheme(filepath.Join(t.TempDir(), "none.json"))
+	UseSavedTheme(store.Dir(t.TempDir()))
 	if !dark {
 		t.Error("the first run is not dark")
 	}

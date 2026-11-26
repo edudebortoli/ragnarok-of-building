@@ -45,7 +45,7 @@ func newHarness(t *testing.T) *harness {
 		t.Fatal(err)
 	}
 	h := &harness{t: t, size: image.Pt(1440, 900)}
-	h.a = NewApp(v, NewTheme(), "")
+	h.a = NewApp(v, NewTheme(), nil)
 	h.waitReady()
 	h.frame()
 	return h
@@ -391,13 +391,13 @@ func TestOpenFileNonBlocking(t *testing.T) {
 	h := newHarness(t)
 	a := h.a
 	release := make(chan struct{})
-	a.OpenFile = func(title, filter string) (string, error) {
+	a.OpenFile = func(title, filter string) (string, []byte, error) {
 		<-release
-		return "x.rrf", nil
+		return "x.rrf", []byte("x"), nil
 	}
 	got := ""
-	a.openFile("t", "f", func(p string) { got = p })
-	a.openFile("t", "f", func(p string) { t.Error("a second dialog opened") })
+	a.openFile("t", "f", func(b []byte) { got = string(b) })
+	a.openFile("t", "f", func([]byte) { t.Error("a second dialog opened") })
 	done := make(chan struct{})
 	go func() { h.frame(); h.frame(); close(done) }()
 	select {
@@ -411,7 +411,7 @@ func TestOpenFileNonBlocking(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 		h.frame()
 	}
-	if got != "x.rrf" {
+	if got != "x" {
 		t.Fatalf("callback got %q", got)
 	}
 }

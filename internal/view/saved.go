@@ -2,11 +2,17 @@ package view
 
 import (
 	"encoding/json"
-	"os"
+	"errors"
+
+	"ragnarok-of-building/internal/store"
 )
 
-// Saved builds live in builds.json next to the program (the same file and
-// format the web version used, so builds saved there still open).
+// Saved builds live under SavedKey in the store: builds.json next to the
+// program on the desktop (the same file and format the old web version
+// used, so builds saved there still open).
+
+// SavedKey is the saved builds' key in the store.
+const SavedKey = "builds.json"
 
 const maxSavedEntries = 2000
 
@@ -24,8 +30,11 @@ type SavedBuild struct {
 
 // LoadSaved reads the saved builds; a missing or broken file is an empty
 // list. Entries without an id or a code are dropped.
-func LoadSaved(path string) []SavedBuild {
-	b, err := os.ReadFile(path)
+func LoadSaved(s store.Store) []SavedBuild {
+	if s == nil {
+		return nil
+	}
+	b, err := s.Read(SavedKey)
 	if err != nil {
 		return nil
 	}
@@ -49,9 +58,11 @@ func LoadSaved(path string) []SavedBuild {
 	return out
 }
 
-// WriteSaved replaces the saved builds (through a temporary file, so a
-// crash never leaves half a file).
-func WriteSaved(path string, list []SavedBuild) error {
+// WriteSaved replaces the saved builds.
+func WriteSaved(s store.Store, list []SavedBuild) error {
+	if s == nil {
+		return errors.New("saved builds: no store")
+	}
 	if list == nil {
 		list = []SavedBuild{}
 	}
@@ -59,9 +70,5 @@ func WriteSaved(path string, list []SavedBuild) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return s.Write(SavedKey, b)
 }

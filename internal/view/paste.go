@@ -23,7 +23,7 @@ const maxPasteText = 8 << 10
 
 var (
 	pasteID     = regexp.MustCompile(`^/([A-Za-z0-9]{1,32})(?:\.[A-Za-z0-9]{1,8})?$`)
-	codeInLink  = regexp.MustCompile(`[?&]b=([A-Za-z0-9_-]+)`)
+	codeInLink  = regexp.MustCompile(`[?&#]b=([A-Za-z0-9_-]+)`)
 	codeInPaste = regexp.MustCompile(`\b(z[A-Za-z0-9_-]{16,}|eyJ[A-Za-z0-9_-]{16,})`)
 )
 

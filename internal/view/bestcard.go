@@ -77,6 +77,7 @@ func (v *Views) BestCardsTraits(ctx context.Context, b calc.Build, slot string, 
 	for range max(1, runtime.NumCPU()-1) {
 		wg.Go(func() {
 			for id := range ch {
+				yield()
 				nb := s.swapItem(b, slot, id, idx)
 				if nb.Equip[slot].Cards[idx] != id { // Normalize dropped it
 					continue

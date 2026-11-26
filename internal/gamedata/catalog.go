@@ -3,9 +3,11 @@
 package gamedata
 
 import (
+	"bufio"
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -401,12 +403,23 @@ func Load(path string) (*Catalog, error) {
 		return nil, err
 	}
 	defer f.Close()
-	zr, err := gzip.NewReader(f)
-	if err != nil {
-		return nil, fmt.Errorf("gamedata: %w", err)
+	return Read(f)
+}
+
+// Read reads a catalog from r: gzipped, as Save writes it, or plain JSON
+// (a web server may have already unzipped it on the way).
+func Read(r io.Reader) (*Catalog, error) {
+	br := bufio.NewReader(r)
+	var src io.Reader = br
+	if magic, _ := br.Peek(2); len(magic) == 2 && magic[0] == 0x1f && magic[1] == 0x8b {
+		zr, err := gzip.NewReader(br)
+		if err != nil {
+			return nil, fmt.Errorf("gamedata: %w", err)
+		}
+		src = zr
 	}
 	var c Catalog
-	if err := json.NewDecoder(zr).Decode(&c); err != nil {
+	if err := json.NewDecoder(src).Decode(&c); err != nil {
 		return nil, fmt.Errorf("gamedata: %w", err)
 	}
 	c.ApplyLatamLimits()

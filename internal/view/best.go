@@ -119,6 +119,7 @@ func (v *Views) BestItemsOpts(ctx context.Context, b calc.Build, slot string, re
 	for range max(1, runtime.NumCPU()-1) {
 		wg.Go(func() {
 			for id := range ch {
+				yield()
 				// The item already worn counts as it is (its random options,
 				// cards and enchants), not as a fresh copy: it reads "=".
 				nb := b

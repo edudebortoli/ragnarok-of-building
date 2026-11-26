@@ -1,10 +1,9 @@
 package ui
 
 import (
-	"encoding/json"
 	"image/color"
 	"math"
-	"os"
+	"ragnarok-of-building/internal/store"
 )
 
 // The dark theme. The named colors (theme.go, rokit.go) are variables that
@@ -81,13 +80,10 @@ func SetDark(on bool) {
 	}
 }
 
-// UseSavedTheme applies the theme the state file keeps: dark unless the
-// player chose the light one.
-func UseSavedTheme(stateFile string) {
-	var st uiState
-	if b, err := os.ReadFile(stateFile); err != nil || json.Unmarshal(b, &st) != nil {
-		st.Light = false
-	}
+// UseSavedTheme applies the theme the store keeps: dark unless the player
+// chose the light one.
+func UseSavedTheme(s store.Store) {
+	st, _ := readState(s)
 	SetDark(!st.Light)
 }
 

@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"image"
-	"os"
 	"strconv"
 
 	"gioui.org/layout"
@@ -28,19 +27,9 @@ func (a *App) importReplay() {
 	a.openFile(a.T("Abrir um replay (.rrf) do jogo"), "Replays (*.rrf)|*.rrf", a.importReplayFile)
 }
 
-func (a *App) importReplayFile(path string) {
-	st, err := os.Stat(path)
-	if err != nil {
-		a.Say(err.Error(), true)
-		return
-	}
-	if st.Size() > maxReplay {
+func (a *App) importReplayFile(buf []byte) {
+	if len(buf) > maxReplay {
 		a.Say(a.T("Arquivo grande demais (máx. 16 MB)."), true)
-		return
-	}
-	buf, err := os.ReadFile(path)
-	if err != nil {
-		a.Say(err.Error(), true)
 		return
 	}
 	a.Say(a.T("Lendo o replay…"), false)

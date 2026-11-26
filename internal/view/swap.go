@@ -199,6 +199,7 @@ func (s *Server) pickGains(b calc.Build, slot string, items []itemView, card int
 		go func() {
 			defer wg.Done()
 			for id := range ch {
+				yield()
 				nb := s.swapItem(b, slot, id, card)
 				e := s.damageView(nb, calc.Compute(nb, c), l).Dmg.Expected
 				ratio := e / base
